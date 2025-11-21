@@ -99,8 +99,8 @@ def df_to_parquet_bytes_(df: pd.DataFrame) -> bytes:
     return buf.getvalue()
 
 # s3.put_object の並列実行 (戻り値の out_key を 完了マーカー用に収集)
-def write_one_partition(Item_ID_df: pd.DataFrame, out_bucket: str, out_key: str) -> str:
-    payload = df_to_parquet_bytes_(Item_ID_df)
+def write_one_partition(item_id_df: pd.DataFrame, out_bucket: str, out_key: str) -> str:
+    payload = df_to_parquet_bytes_(item_id_df)
     put_parquet_bytes_(out_bucket, out_key, payload)
     return out_key
 
@@ -154,23 +154,23 @@ def process_kind(kind: str, in_bucket: str, in_prefix: str, out_bucket: str, out
         if df.empty:
             log.info(f"[{kind}] empty: {in_key}")
             continue
-        # "Item_ID"列が存在しない場合のエラーハンドリング
-        if "Item_ID" not in df.columns:
-            raise ValueError(f"'Item_ID' column missing in {in_key}")
+        # "item_id"列が存在しない場合のエラーハンドリング
+        if "item_id" not in df.columns:
+            raise ValueError(f"'item_id' column missing in {in_key}")
 
         # s3.put_object 並列実行
         outputs_written: List[str] = [] # 分割後のキーを格納するリスト
         futures = []
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
-            # Item_IDコードごとにグループ化し、各グループを個別のファイルに保存
-            for Item_ID, Item_ID_df in df.groupby("Item_ID"):
-                out_key = f"{out_prefix}{Item_ID}/{date}.parquet"
-                futures.append(ex.submit(write_one_partition, Item_ID_df, out_bucket, out_key))
+            # item_idコードごとにグループ化し、各グループを個別のファイルに保存
+            for item_id, item_id_df in df.groupby("item_id"):
+                out_key = f"{out_prefix}{item_id}/{date}.parquet"
+                futures.append(ex.submit(write_one_partition, item_id_df, out_bucket, out_key))
             for f in as_completed(futures):
                 out_key = f.result() # 例外伝播 & out_key の取得
                 outputs_written.append(f"s3://{out_bucket}/{out_key}")
         
-        log.info(f"[OK] {kind} {date}: {df['Item_ID'].nunique()} Item_IDs -> parallel PUT x{len(futures)}")
+        log.info(f"[OK] {kind} {date}: {df['item_id'].nunique()} item_ids -> parallel PUT x{len(futures)}")
 
         # 完了マーカーを JSON で作成
         marker_key = f"{marker_prefix}{date}.json"
