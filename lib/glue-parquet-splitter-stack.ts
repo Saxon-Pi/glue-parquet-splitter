@@ -9,8 +9,8 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 const bucketName           = "glue-split-job-saxon";  // S3バケット名
 const scriptName           = "parquet-splitter.py";   // Glue で実行するスクリプト名
 const scriptPrefix         = "src/glue/";             // スクリプトの S3 prefix
-const inPrefixPyshell      = "data/input/pyshell";           // 入力データの S3 prefix (Pyshell)
-const inPrefixRay          = "data/input/ray";           // 入力データの S3 prefix (Ray)
+const inPrefixPyshell      = "data/input/pyshell";    // 入力データの S3 prefix (Pyshell)
+const inPrefixRay          = "data/input/ray";        // 入力データの S3 prefix (Ray)
 const outPrefixPyshell     = "data/output/pyshell";   // 出力データの S3 prefix (Pyshell)
 const outPrefixRay         = "data/output/ray";       // 出力データの S3 prefix (Ray)
 const markerPrefixPyshell  = "data/markers/pyshell";  // マーカー（分割情報）の S3 prefix (Pyshell)
@@ -24,7 +24,7 @@ export class GlueParquetSplitterStack extends cdk.Stack {
     const Bucket = s3.Bucket.fromBucketName(this, 'OutBucket', bucketName);
 
     // Glue(PythonShell) 実行用ロール
-    const rolePyshell = new iam.Role(this, 'GlueJobRole', {
+    const rolePyshell = new iam.Role(this, 'GlueJobRolePyshell', {
       assumedBy: new iam.ServicePrincipal('glue.amazonaws.com'),
     });
     // CloudWatch Logs 権限
@@ -91,7 +91,7 @@ export class GlueParquetSplitterStack extends cdk.Stack {
     });
 
     // Glue(Ray) 実行用ロール
-    const roleRay = new iam.Role(this, 'GlueJobRole', {
+    const roleRay = new iam.Role(this, 'GlueJobRoleRay', {
       assumedBy: new iam.ServicePrincipal('glue.amazonaws.com'),
     });
     roleRay.addToPolicy(new iam.PolicyStatement({
@@ -127,8 +127,8 @@ export class GlueParquetSplitterStack extends cdk.Stack {
     }));
 
     // Glue Rayジョブ
-    const job = new glue.CfnJob(this, 'JanSplitRayJob', {
-      name: 'glueray-zaiko-split',
+    const jobRay = new glue.CfnJob(this, 'JanSplitRayJob', {
+      name: 'parquet-splitter-ray',
       role: roleRay.roleArn,
       glueVersion: '4.0',       // コンソールでは4.0固定のため
       workerType: 'Z.2X',       // Ray専用 workerType
@@ -139,7 +139,7 @@ export class GlueParquetSplitterStack extends cdk.Stack {
         scriptLocation: `s3://${bucketName}/${scriptPrefix}${scriptName}`,
       },
       defaultArguments: {
-        '--KIND': 'zaiko',
+        '--KIND': 'ray',
         '--IN_BUCKET': Bucket.bucketName,
         '--OUT_BUCKET': Bucket.bucketName,
         '--IN_PREFIX': inPrefixRay,
