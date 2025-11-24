@@ -50,8 +50,8 @@ export class GlueParquetMergeStack extends cdk.Stack {
     }));
 
     /// Glue Rayジョブ
-    const job = new glue.CfnJob(this, 'mergeRayJob', {
-      name: 'glueray-merge',
+    const job = new glue.CfnJob(this, 'ParquetMergeRayJob', {
+      name: 'parquet-merge-ray',
       role: role.roleArn,
       glueVersion: '4.0',       // コンソールでは4.0固定のため
       workerType: 'Z.2X',       // Ray専用 workerType
