@@ -8,7 +8,7 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 const bucketName           = "glue-split-job-saxon";  // S3バケット名
 const scriptName           = "parquet-merge.py";      // Glue で実行するスクリプト名
 const scriptPrefix         = "src/glue/merge/";       // スクリプトの S3 prefix
-const inPrefix             = "data/split/ray";        // 入力データの S3 prefix
+const inPrefix             = "data/split";        // 入力データの S3 prefix
 const outPrefix            = "data/merge";            // 出力データの S3 prefix
 
 export class GlueParquetMergeStack extends cdk.Stack {
