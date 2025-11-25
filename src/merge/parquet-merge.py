@@ -60,8 +60,14 @@ def read_parquet(bucket: str, key: str) -> pd.DataFrame:
 # -> Glue Ray のワーカー毎にこの関数が実行される
 @ray.remote
 def read_parquet_remote(bucket: str, key: str) -> pd.DataFrame:
-    # データ読込処理の read_parquet() をワーカーで並列実行
-    return read_parquet(bucket, key)
+    # Ray ワーカー側で並列動作する Parquet 読み込み関数 
+    # グローバルの s3 を参照せずに、内部で S3 クライアントを作成する
+    # 既存の read_parquet() 関数は使用しない
+    s3_local = boto3.client("s3", config=boto_cfg)
+
+    obj = s3_local.get_object(Bucket=bucket, Key=key)
+    body = obj["Body"].read()
+    return pd.read_parquet(BytesIO(body), engine="pyarrow")
 
 # マージ後のcsvファイルをS3バケットに格納
 def save_csv_to_s3(df: pd.DataFrame, bucket: str, key: str):
@@ -81,63 +87,58 @@ DIR_LIST = [
 def main():
     log.info("Glue Ray job invoked!!!")
 
-    # Glue Ray クラスタに接続（基本的に address="auto" でOK）
-    ray.init(address="auto", logging_level=logging.ERROR)
-    log.info(f"Ray initialized. MAX_WORKERS={MAX_WORKERS}")
+    # ray の初期化（Glue Ray 管理だが念の為）
+    if not ray.is_initialized():
+        ray.init()
 
-    try:
-        for src_name, dest_name, aggregated_file in DIR_LIST:
-            src_prefix = f"{IN_PREFIX.rstrip('/')}/{src_name}/"                    # inputのS3 prefix
-            dest_key   = f"{OUT_PREFIX.rstrip('/')}/{dest_name}/{aggregated_file}" # outputのS3 key
+    for src_name, dest_name, aggregated_file in DIR_LIST:
+        src_prefix = f"{IN_PREFIX.rstrip('/')}/{src_name}/"                    # inputのS3 prefix
+        dest_key   = f"{OUT_PREFIX.rstrip('/')}/{dest_name}/{aggregated_file}" # outputのS3 key
 
-            # マージ対象Parquetリストの作成
-            keys = list_parquet_keys(IN_BUCKET, src_prefix)
-            log.info(f"[{src_name}] parquet files: {len(keys)} (example: {keys[0] if keys else 'N/A'})")
-            if not keys:
-                log.info(f"[{src_name}] no files -> skip")
-                continue
+        # マージ対象Parquetリストの作成
+        keys = list_parquet_keys(IN_BUCKET, src_prefix)
+        log.info(f"[{src_name}] parquet files: {len(keys)} (example: {keys[0] if keys else 'N/A'})")
+        if not keys:
+            log.info(f"[{src_name}] no files -> skip")
+            continue
 
-            # *** ここから Ray で並列読込 ***
+        # *** ここから Ray で並列読込 ***
 
-            # 全キーに対して remote タスク（read_parquet）を実行する
-            # -> futures は ObjectRef（将来の読込結果を取得するための ID みたいなもの）で返ってくる
-            futures = [read_parquet_remote.remote(IN_BUCKET, key) for key in keys]
+        # 全キーに対して remote タスク（read_parquet）を実行する
+        # -> futures は ObjectRef（将来の読込結果を取得するための ID みたいなもの）で返ってくる
+        futures = [read_parquet_remote.remote(IN_BUCKET, key) for key in keys]
 
-            df_list: List[pd.DataFrame] = [] # DF 格納用配列
-            total = len(futures)
+        df_list: List[pd.DataFrame] = [] # DF 格納用配列
+        total = len(futures)
 
-            # # すべてのParquetファイルを逐次読込で結合
-            # df_list: List[pd.DataFrame] = []
-            # for i, key in enumerate(keys, 1):
-            #     df_list.append(read_parquet(IN_BUCKET, key)) # ParquetのDFをlistにappend
-            #     if i % 50 == 0:
-            #         log.info(f"[{src_name}] read {i}/{len(keys)} files")
+        # # すべてのParquetファイルを逐次読込で結合
+        # df_list: List[pd.DataFrame] = []
+        # for i, key in enumerate(keys, 1):
+        #     df_list.append(read_parquet(IN_BUCKET, key)) # ParquetのDFをlistにappend
+        #     if i % 50 == 0:
+        #         log.info(f"[{src_name}] read {i}/{len(keys)} files")
 
-            # MAX_WORKERS ごとにまとめて ray.get していく（一度にメモリ上に展開する DF 数に上限を設けて安定化）
-            # -> バッチ分の ObjectRef を解決して読込結果の pd.DataFrame のリストにする
-            for i in range(0, total, MAX_WORKERS):
-                batch_futs = futures[i:i + MAX_WORKERS]
-                batch_df_list = ray.get(batch_futs)
-                df_list.extend(batch_df_list)
+        # MAX_WORKERS ごとにまとめて ray.get していく（一度にメモリ上に展開する DF 数に上限を設けて安定化）
+        # -> バッチ分の ObjectRef を解決して読込結果の pd.DataFrame のリストにする
+        for i in range(0, total, MAX_WORKERS):
+            batch_futs = futures[i:i + MAX_WORKERS]
+            batch_df_list = ray.get(batch_futs)
+            df_list.extend(batch_df_list)
 
-            # ****************************
+        # ****************************
 
-            df = pd.concat(df_list, ignore_index=True) # listのDFを単一のDFにマージ
+        df = pd.concat(df_list, ignore_index=True) # listのDFを単一のDFにマージ
 
-            # 作成したデータフレームをソート
-            # date でソート
-            if "date" in df.columns:
-                df.sort_values(by=["date"], ascending=False, inplace=True)
+        # 作成したデータフレームをソート
+        # date でソート
+        if "date" in df.columns:
+            df.sort_values(by=["date"], ascending=False, inplace=True)
 
-            # データフレームをCSVとして出力
-            log.info(f"[{src_name}] write -> s3://{OUT_BUCKET}/{dest_key}")
-            save_csv_to_s3(df, OUT_BUCKET, dest_key)
+        # データフレームをCSVとして出力
+        log.info(f"[{src_name}] write -> s3://{OUT_BUCKET}/{dest_key}")
+        save_csv_to_s3(df, OUT_BUCKET, dest_key)
 
-        log.info("Done.")
-
-    finally:
-        # Ray クラスタから切断
-        ray.shutdown()
+    log.info("Done.")
 
 if __name__ == "__main__":
     main()
