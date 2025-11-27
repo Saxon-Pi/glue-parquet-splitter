@@ -1,27 +1,46 @@
 import * as cdk from 'aws-cdk-lib/core';
 import { Construct } from 'constructs';
-import * as glue from 'aws-cdk-lib/aws-glue';
+import { Stack, StackProps, Duration, Tags } from 'aws-cdk-lib';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 
 // 環境変数
-const bucketName           = "glue-split-job-saxon";  // S3バケット名
-const scriptName           = "parquet-splitter.py";   // Glue で実行するスクリプト名
-const scriptPrefix         = "src/glue/split/";        // スクリプトの S3 prefix
-const inPrefixPyshell      = "data/input/pyshell";    // 入力データの S3 prefix (Pyshell)
-const inPrefixRay          = "data/input/ray";        // 入力データの S3 prefix (Ray)
-const outPrefixPyshell     = "data/split/pyshell";    // 出力データの S3 prefix (Pyshell)
-const outPrefixRay         = "data/split/ray";        // 出力データの S3 prefix (Ray)
-const markerPrefixPyshell  = "data/markers/pyshell";  // マーカー（分割情報）の S3 prefix (Pyshell)
-const markerPrefixRay      = "data/markers/ray";      // マーカー（分割情報）の S3 prefix (Ray)
+const bucketName = "glue-split-job-saxon";  // S3バケット名
 
-
-// オブジェクト削除は不可は掛からないため Lambda で実装する
-export class LambdaParquetDeletionStack extends cdk.Stack {
+export class LambdaParquetDeletionStack extends Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
+    const configBucket = s3.Bucket.fromBucketName(
+      this,
+      'ConfigBucket',
+      bucketName,
+    );
 
-
+    const parquetDeletionFunc = new lambda.Function(this, 'parquetDeletionFunc',
+      {
+        functionName: 'parquetDeletionFunc',
+        code: lambda.Code.fromAsset('./src/deletion'),
+        runtime: lambda.Runtime.PYTHON_3_13,
+        handler: 'index.lambda_handler',
+        timeout: Duration.minutes(15),
+        environment: {
+          MARKER_BUCKET_NAME: bucketName,
+        },
+      },
+    );
+    parquetDeletionFunc.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['s3:GetObject', 's3:DeleteObject'],
+        resources: [
+          // 完了マーカー prefix
+          configBucket.arnForObjects('data/markers/*'),
+          // 削除対象オブジェクト prefix
+          configBucket.arnForObjects('data/split/*'),
+        ],
+      }),
+    );
   }
 }
