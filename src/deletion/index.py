@@ -5,6 +5,17 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
+# 完了マーカー（json）に記載されているオブジェクト URL に該当するオブジェクトを一括削除するスクリプト
+# event で指定した日付の分割後データ（split 内の parquetファイル）を全て削除することができる
+# 以下のコマンドをCLIから実行して使用する（"kind", "date" は任意の値を入力すること）
+"""
+aws lambda invoke \
+  --function-name parquetDeletionFunc \
+  --payload '{"kind":"pyshell","date":"20251107"}' \
+  --cli-binary-format raw-in-base64-out \
+  response.json
+"""
+
 # 完了マーカーイメージ（YYYYMMDD.json）
 # {"kind": "pyshell", "date": "20251107", "input_key": "s3://glue-split-job-saxon/data/input/pyshell/20251107.parquet",
 #  "outputs": ["s3://glue-split-job-saxon/data/output/pyshell/0000000002/20251107.parquet",
