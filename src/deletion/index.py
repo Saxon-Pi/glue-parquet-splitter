@@ -65,17 +65,76 @@ def load_marker(bucket: str, kind: str, date_str: str) -> dict:
         raise RuntimeError(
             f"Failed to load marker: s3://{bucket}/{marker_key} ({e})"
         ) from e
-
+    # get結果から S3オブジェクトの中身（jsonファイルの中身）を読み込む
     body = resp["Body"].read()
     try:
+        # body の json文字列を pythonオブジェクト（dict）に変換
         marker = json.loads(body)
     except json.JSONDecodeError as e:
         raise RuntimeError(
             f"Marker is not valid JSON: s3://{bucket}/{marker_key} ({e})"
         ) from e
-
     return marker, marker_key
 
+# "outputs" リスト内の S3 URL オブジェクトを一括削除
+def delete_objects_from_outputs(outputs):
+    # バケットごとにまとめる（異なるバケットが混ざっている可能性も考慮）
+    bucket_to_keys = {}
+    for url in outputs:
+        bucket, key = parse_s3_url(url) # URL からバケット名とキーを取得
+        bucket_to_keys.setdefault(bucket, []).append(key)
+    """
+    bucket_to_keys = {
+    "glue-split-job-saxon": [
+        {"Key": "data/split/pyshell/0000000001/20251107.parquet"},
+        {"Key": "data/split/pyshell/0000000002/20251107.parquet"},
+        # ...
+    ],
+    "another-bucket": [
+        {"Key": "data/split/ray/0000000001/20251107.parquet"},
+        # ...
+    ],
+    """
+    total_deleted = 0
+    errors = []
+
+    # bucket_to_keys のアイテムごとにオブジェクトを削除
+    for bucket, keys in bucket_to_keys.items():
+        # 1000 件ずつバッチに分割
+        for i in range(0, len(keys), 1000):       # i=0, i=1000, i=2000, ...
+            chunk = keys[i : i + 1000]            # 0~999, 1000~1999, 2000~2999, ...
+            objects = [{"Key": k} for k in chunk] # 削除対象オブジェクトの作成
+            """
+            objects = [
+                {"Key": "data/split/pyshell/0000000001/20251107.parquet"},
+                {"Key": "data/split/pyshell/0000000002/20251107.parquet"},
+                ...
+            ]
+            """
+            # オブジェクト削除
+            try:
+                resp = s3.delete_objects(
+                    Bucket=bucket,
+                    Delete={"Objects": objects, "Quiet": True},
+                )
+            except ClientError as e:
+                errors.append(
+                    f"delete_objects failed for bucket={bucket}, keys(sample)={chunk[:3]}: {e}"
+                )
+                continue
+
+            # 削除成功件数のカウント
+            deleted_list = resp.get("Deleted", [])
+            total_deleted += len(deleted_list)
+            
+            # エラーリスト
+            err_list = resp.get("Errors", [])
+            if err_list:
+                # ログ出力のために 3件 だけエラーを記録
+                errors.append(
+                    f"S3 reported delete errors for bucket={bucket}: {err_list[:3]}"
+                )
+    return total_deleted, errors
 
 """
 Lambda 実行 event は以下を想定
@@ -101,7 +160,7 @@ def lambda_handler(event, context):
     # 完了マーカーの読み込み
     marker, marker_key = load_marker(MARKER_BUCKET_NAME, kind, date_str)
 
-    # json の "outputs" を取得（削除対象オブジェクトURLのリスト）
+    # marker（dict）から "outputs" を取得（削除対象オブジェクトURLのリスト）
     outputs = marker.get("outputs")
     # outputs がリスト or 存在しない場合は何もせず終了
     if not isinstance(outputs, list) or not outputs:
@@ -114,5 +173,18 @@ def lambda_handler(event, context):
 
     # 対象オブジェクトの削除
     total_deleted, errors = delete_objects_from_outputs(outputs)
+
+    result = {
+        "markerBucket": MARKER_BUCKET_NAME,
+        "markerKey": marker_key,
+        "kind": kind,
+        "date": date_str,
+        "outputsCount": len(outputs),
+        "deleted": total_deleted,
+        "errors": errors,
+    }
+
+    # ログにも出しておく
+    print(json.dumps(result, ensure_ascii=False))
 
     return result
