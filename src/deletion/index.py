@@ -164,16 +164,62 @@ def lambda_handler(event, context):
     outputs = marker.get("outputs")
     # outputs がリスト or 存在しない場合は何もせず終了
     if not isinstance(outputs, list) or not outputs:
-        return {
+        result = {
             "markerBucket": MARKER_BUCKET_NAME,
             "markerKey": marker_key,
+            "kind": kind,
+            "date": date_str,
+            "outputsCount": 0,
             "deleted": 0,
+            "markerDeleted": False,
             "mode": "no_outputs",
         }
+        print(json.dumps(result, ensure_ascii=False))
+        return result
 
     # 対象オブジェクトの削除
     total_deleted, errors = delete_objects_from_outputs(outputs)
 
+    # オブジェクトが 1 つでも削除エラーを起こした場合、例外を投げて Lambda の実行を失敗とする
+    if errors:
+        result = {
+            "markerBucket": MARKER_BUCKET_NAME,
+            "markerKey": marker_key,
+            "kind": kind,
+            "date": date_str,
+            "outputsCount": len(outputs),
+            "deleted": total_deleted,
+            "markerDeleted": False,
+            "errors": errors,
+        }
+        print(json.dumps(result, ensure_ascii=False))
+        # ランタイムエラー
+        raise RuntimeError(
+            f"Some objects failed to delete. errors(sample up to 3): {errors[:3]}"
+        )
+    
+    # ここまで来たら outputs の削除は全て成功扱いとなるため、完了マーカを削除
+    try:
+        s3.delete_object(Bucket=MARKER_BUCKET_NAME, Key=marker_key)
+        marker_deleted = True
+    except ClientError as e:
+        # マーカー削除も必ず成功させるため、ここで失敗しても例外を投げる
+        result = {
+            "markerBucket": MARKER_BUCKET_NAME,
+            "markerKey": marker_key,
+            "kind": kind,
+            "date": date_str,
+            "outputsCount": len(outputs),
+            "deleted": total_deleted,
+            "markerDeleted": False,
+            "errors": [f"Failed to delete marker: {e}"],
+        }
+        print(json.dumps(result, ensure_ascii=False))
+        raise RuntimeError(
+            f"Failed to delete marker s3://{MARKER_BUCKET_NAME}/{marker_key}: {e}"
+        ) from e
+
+    # 正常終了パス
     result = {
         "markerBucket": MARKER_BUCKET_NAME,
         "markerKey": marker_key,
@@ -181,10 +227,9 @@ def lambda_handler(event, context):
         "date": date_str,
         "outputsCount": len(outputs),
         "deleted": total_deleted,
-        "errors": errors,
+        "markerDeleted": marker_deleted,
+        "errors": [],
     }
-
-    # ログにも出しておく
     print(json.dumps(result, ensure_ascii=False))
 
     return result
