@@ -1,21 +1,27 @@
-import * as cdk from 'aws-cdk-lib/core';
+import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import { Stack, StackProps, Duration, Tags } from 'aws-cdk-lib';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import { LambdaDeletionConfig } from '../config/config';
 
-// 環境変数
-const bucketName = "glue-split-job-saxon";  // S3バケット名
+export interface LambdaParquetDeletionStackProps extends cdk.StackProps {
+  config: LambdaDeletionConfig;
+}
 
-export class LambdaParquetDeletionStack extends Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+export class LambdaParquetDeletionStack extends cdk.Stack {
+  constructor(scope: Construct, id: string, props: LambdaParquetDeletionStackProps) {
     super(scope, id, props);
+
+    const {
+      markerBucketName
+    } = props.config
 
     const configBucket = s3.Bucket.fromBucketName(
       this,
       'ConfigBucket',
-      bucketName,
+      markerBucketName,
     );
 
     const parquetDeletionFunc = new lambda.Function(this, 'parquetDeletionFunc',
@@ -26,7 +32,7 @@ export class LambdaParquetDeletionStack extends Stack {
         handler: 'index.lambda_handler',
         timeout: Duration.minutes(15),
         environment: {
-          MARKER_BUCKET_NAME: bucketName,
+          MARKER_BUCKET_NAME: markerBucketName,
         },
       },
     );
