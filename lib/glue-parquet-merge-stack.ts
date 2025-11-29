@@ -19,7 +19,7 @@ export class GlueParquetMergeStack extends cdk.Stack {
       scriptPrefix,   // スクリプトの S3 prefix
       inPrefix,       // 入力データの S3 prefix
       outPrefix,      // 出力データの S3 prefix
-    } = props.config
+    } = props.config;
 
     const Bucket = s3.Bucket.fromBucketName(this, 'OutBucket', bucketName);
 

@@ -20,12 +20,16 @@ const stageFromCtx = (app.node.tryGetContext('stage') ?? 'dev') as Stage;
 if (!['dev', 'stg', 'prod'].includes(stageFromCtx)) {
   throw new Error(`Unknown stage: ${stageFromCtx}. Use one of: dev, stg, prod`);
 }
-// config
+// appConfig（dev / stg / prod から選択）
 const appConfig: AppConfig = appConfigByStage[stageFromCtx];
 console.log(appConfig)
 
 new GlueParquetSplitterStack(app, 'GlueParquetSplitterStack', {
-
+  env: {
+    account: process.env.CDK_DEFAULT_ACCOUNT,
+    region: process.env.CDK_DEFAULT_REGION,
+  },
+  config: appConfig.glueSplit,
 });
 
 new GlueParquetMergeStack(app, 'GlueParquetMergeStack', {

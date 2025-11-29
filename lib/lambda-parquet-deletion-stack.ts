@@ -16,7 +16,7 @@ export class LambdaParquetDeletionStack extends cdk.Stack {
 
     const {
       markerBucketName
-    } = props.config
+    } = props.config;
 
     const configBucket = s3.Bucket.fromBucketName(
       this,
