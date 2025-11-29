@@ -3,6 +3,7 @@ import { Construct } from 'constructs';
 import * as glue from 'aws-cdk-lib/aws-glue';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import { GlueSplitConfig } from '../config/config';
 
 // *****************************************************************************************
 // input の .parquet ファイルを分割する Glue job を作成するスタック
@@ -12,21 +13,26 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 // 入力ファイルのサイズに合わせて pyshell / ray の両方でジョブを作成している（処理は同じ）
 // *****************************************************************************************
 
-// 環境変数
-// python スクリプトは pyshell, ray 共通、入出力と完了マーカーは別 prefix に格納
-const bucketName           = "glue-split-job-saxon";  // S3バケット名
-const scriptName           = "parquet-splitter.py";   // Glue で実行するスクリプト名
-const scriptPrefix         = "src/glue/split/";        // スクリプトの S3 prefix
-const inPrefixPyshell      = "data/input/pyshell";    // 入力データの S3 prefix (Pyshell)
-const inPrefixRay          = "data/input/ray";        // 入力データの S3 prefix (Ray)
-const outPrefixPyshell     = "data/split/pyshell";    // 出力データの S3 prefix (Pyshell)
-const outPrefixRay         = "data/split/ray";        // 出力データの S3 prefix (Ray)
-const markerPrefixPyshell  = "data/markers/pyshell";  // マーカー（分割情報）の S3 prefix (Pyshell)
-const markerPrefixRay      = "data/markers/ray";      // マーカー（分割情報）の S3 prefix (Ray)
+export interface GlueParquetSplitterProps extends cdk.StackProps {
+  config: GlueSplitConfig;
+}     
 
 export class GlueParquetSplitterStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props: GlueParquetSplitterProps) {
     super(scope, id, props);
+
+    // python スクリプトは pyshell, ray 共通、入出力と完了マーカーは別 prefix に格納
+    const {
+      bucketName,          // S3バケット名
+      scriptName,          // Glue で実行するスクリプト名
+      scriptPrefix,        // スクリプトの S3 prefix
+      inPrefixPyshell,     // 入力データの S3 prefix (Pyshell)
+      inPrefixRay,         // 入力データの S3 prefix (Ray)
+      outPrefixPyshell,    // 出力データの S3 prefix (Pyshell)
+      outPrefixRay,        // 出力データの S3 prefix (Ray)
+      markerPrefixPyshell, // マーカー（分割情報）の S3 prefix (Pyshell)
+      markerPrefixRay,     // マーカー（分割情報）の S3 prefix (Ray)
+    } = props.config;
 
     // S3 バケットは既存のものを使用
     const Bucket = s3.Bucket.fromBucketName(this, 'OutBucket', bucketName);
