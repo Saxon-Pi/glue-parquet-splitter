@@ -1,15 +1,15 @@
-import * as cdk from 'aws-cdk-lib';
+import { Stack, StackProps } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as glue from 'aws-cdk-lib/aws-glue';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import { GlueMergeConfig } from '../config/config';
 
-export interface GlueParquetMergeStackProps extends cdk.StackProps {
+export interface GlueParquetMergeStackProps extends StackProps {
   config: GlueMergeConfig;
 }          
 
-export class GlueParquetMergeStack extends cdk.Stack {
+export class GlueParquetMergeStack extends Stack {
   constructor(scope: Construct, id: string, props: GlueParquetMergeStackProps) {
     super(scope, id, props);
 

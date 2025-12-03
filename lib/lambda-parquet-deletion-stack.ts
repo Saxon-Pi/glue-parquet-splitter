@@ -1,16 +1,15 @@
-import * as cdk from 'aws-cdk-lib';
+import { Stack, StackProps, Duration } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
-import { Stack, StackProps, Duration, Tags } from 'aws-cdk-lib';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import { LambdaDeletionConfig } from '../config/config';
 
-export interface LambdaParquetDeletionStackProps extends cdk.StackProps {
+export interface LambdaParquetDeletionStackProps extends StackProps {
   config: LambdaDeletionConfig;
 }
 
-export class LambdaParquetDeletionStack extends cdk.Stack {
+export class LambdaParquetDeletionStack extends Stack {
   constructor(scope: Construct, id: string, props: LambdaParquetDeletionStackProps) {
     super(scope, id, props);
 

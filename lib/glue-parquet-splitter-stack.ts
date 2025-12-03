@@ -1,4 +1,4 @@
-import * as cdk from 'aws-cdk-lib/core';
+import { Stack, StackProps } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as glue from 'aws-cdk-lib/aws-glue';
 import * as iam from 'aws-cdk-lib/aws-iam';
@@ -13,11 +13,11 @@ import { GlueSplitConfig } from '../config/config';
 // 入力ファイルのサイズに合わせて pyshell / ray の両方でジョブを作成している（処理は同じ）
 // *****************************************************************************************
 
-export interface GlueParquetSplitterProps extends cdk.StackProps {
+export interface GlueParquetSplitterProps extends StackProps {
   config: GlueSplitConfig;
-}     
+}  
 
-export class GlueParquetSplitterStack extends cdk.Stack {
+export class GlueParquetSplitterStack extends Stack {
   constructor(scope: Construct, id: string, props: GlueParquetSplitterProps) {
     super(scope, id, props);
 
@@ -141,7 +141,7 @@ export class GlueParquetSplitterStack extends cdk.Stack {
     }));
 
     // Glue Rayジョブ
-    const jobRay = new glue.CfnJob(this, 'JanSplitRayJob', {
+    const jobRay = new glue.CfnJob(this, 'ParquetSplitterRayJob', {
       name: 'parquet-splitter-ray',
       role: roleRay.roleArn,
       glueVersion: '4.0',       // コンソールでは4.0固定のため
