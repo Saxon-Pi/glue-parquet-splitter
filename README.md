@@ -1,14 +1,51 @@
-# Welcome to your CDK TypeScript project
+# 📦 Parquet Split / Merge / Delete Pipeline (AWS Glue + Lambda)
 
-This is a blank project for CDK development with TypeScript.
+本リポジトリは、**大規模な Parquet データを item_id 単位に分割 → マージ → 削除**するための  
+AWS Glue（PythonShell / Ray）および AWS Lambda のサンプル実装となる.
 
-The `cdk.json` file tells the CDK Toolkit how to execute your app.
+Glue ジョブはすべて **CDK（TypeScript）で構築**し、処理ロジックは **Python** で記述.
 
-## Useful commands
+---
 
-* `npm run build`   compile typescript to js
-* `npm run watch`   watch for changes and compile
-* `npm run test`    perform the jest unit tests
-* `npx cdk deploy`  deploy this stack to your default AWS account/region
-* `npx cdk diff`    compare deployed stack with current state
-* `npx cdk synth`   emits the synthesized CloudFormation template
+## 機能概要
+
+本リポジトリは次の 3 つの機能で構成されている
+
+---
+
+### 1. Parquet Splitter（Glue PythonShell / Ray）
+
+**入力 Parquet（例: `YYYYMMDD.parquet`）を `item_id` ごとに分割し、  
+分割後のファイルと “完了マーカー JSON” を S3 に出力する Glue ジョブ.**
+
+- PythonShell と Ray の 2 種類のジョブが生成される（どちらも同じ処理）
+- 出力構造例：
+
+```text
+data/
+  input/pyshell/20250101.parquet
+  split/pyshell/0000000001/20250101.parquet
+  split/pyshell/0000000002/20250101.parquet
+  ...
+  markers/pyshell/20250101.json
+```
+
+---
+
+### 2. Parquet Merger（Glue Ray）
+
+複数の Parquet を Ray で並列に読み込み、DataFrame で結合して CSV を生成する Glue ジョブ.
+
+---
+
+### 3. Parquet Deleter（Lambda）
+
+Splitter が生成した完了マーカー JSON を読み込み、記録されている Parquet を一括削除する Lambda 関数.
+
+---
+
+##  処理フロー
+
+1. Splitter Glue → Parquet を item_id ごとに分割  
+2. Merger Glue → 複数日付・複数 item_id の Parquet を CSV に統合  
+3. Deleter Lambda → Splitter が生成した Parquet を削除（marker JSON の outputs を使用）
